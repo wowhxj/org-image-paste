@@ -40,7 +40,9 @@
 ;;   When point is on an inline image, `+' / `-' call
 ;;   `image-increase-size' / `image-decrease-size'.
 ;;   Otherwise the keys self-insert as usual.
-;;   `C-+' / `C--' fall back to `text-scale-increase' / `text-scale-decrease'.
+;;   `C-+' / `C--' resize the image `:width' block at point (and do
+;;   nothing off an image); they no longer double as buffer text scaling,
+;;   so bind that to your own keys if you want it.
 ;;
 ;; Quick start:
 ;;
@@ -457,28 +459,25 @@ ATTR_LATEX \\\\linewidth fraction is recomputed from the new pixel width."
   (org-paste-plus-display-subtree-images 'on))
 
 (defun org-paste-plus--resize (resize-func)
-  "Resize images or adjust text scale based on context.
-When on an ATTR/CAPTION line or inline image, updates the surrounding
-`:width' block.  Otherwise adjusts text scale."
+  "Resize the image `:width' block at point.
+Acts only when point is on an ATTR/CAPTION line, an inline image, or an
+image link; otherwise it is a no-op (it no longer scales buffer text)."
   (let ((sign (if (eq resize-func 'image-increase-size) '+ '-)))
-    (cond
-     ((or (org-paste-plus--at-attr-line-p)
-          (image-at-point-p)
-          (org-paste-plus--at-image-link-p))
-      (org-paste-plus--resize-attr sign))
-     (t
-      (call-interactively
-       (if (eq sign '+) #'text-scale-increase #'text-scale-decrease))))))
+    (if (or (org-paste-plus--at-attr-line-p)
+            (image-at-point-p)
+            (org-paste-plus--at-image-link-p))
+        (org-paste-plus--resize-attr sign)
+      (message "org-paste-plus: point is not on an image"))))
 
 ;;;###autoload
 (defun org-paste-plus-increase ()
-  "Grow the image, `:width' attr, or text scale at point."
+  "Grow the image `:width' at point (no-op when not on an image)."
   (interactive)
   (org-paste-plus--resize 'image-increase-size))
 
 ;;;###autoload
 (defun org-paste-plus-decrease ()
-  "Shrink the image, `:width' attr, or text scale at point."
+  "Shrink the image `:width' at point (no-op when not on an image)."
   (interactive)
   (org-paste-plus--resize 'image-decrease-size))
 
