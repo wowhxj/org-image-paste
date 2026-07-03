@@ -315,7 +315,12 @@ source path; otherwise it is read from the clipboard."
   (let ((tmp (make-temp-file "org-paste-plus" nil ".png")))
     (unwind-protect
         (progn
-          (shell-command (org-paste-plus--clipboard-command tmp))
+          ;; Probe quietly: a text clipboard makes the tool (e.g. pngpaste)
+          ;; exit non-zero with no output.  `shell-command' would then report
+          ;; "Shell command failed"; `call-process-shell-command' with a nil
+          ;; destination discards output/stderr and ignores the exit code.
+          (call-process-shell-command
+           (org-paste-plus--clipboard-command tmp) nil nil)
           (> (or (file-attribute-size (file-attributes tmp)) 0) 0))
       (delete-file tmp))))
 
