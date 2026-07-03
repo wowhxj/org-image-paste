@@ -461,13 +461,20 @@ ATTR_LATEX \\\\linewidth fraction is recomputed from the new pixel width."
 (defun org-paste-plus--resize (resize-func)
   "Resize the image `:width' block at point.
 Acts only when point is on an ATTR/CAPTION line, an inline image, or an
-image link; otherwise it is a no-op (it no longer scales buffer text)."
+image link; otherwise it is a no-op (it no longer scales buffer text).
+Inside an `ox-mindmap' block the ATTR lines are wrapped in the map's box
+drawing, so defer to the map's own node resizer when available."
   (let ((sign (if (eq resize-func 'image-increase-size) '+ '-)))
-    (if (or (org-paste-plus--at-attr-line-p)
-            (image-at-point-p)
-            (org-paste-plus--at-image-link-p))
-        (org-paste-plus--resize-attr sign)
-      (message "org-paste-plus: point is not on an image"))))
+    (cond
+     ((and (fboundp 'org-mindmap-parser-region-active-p)
+           (org-mindmap-parser-region-active-p)
+           (fboundp 'org-mindmap-resize-node-image))
+      (org-mindmap-resize-node-image (if (eq sign '+) 1 -1)))
+     ((or (org-paste-plus--at-attr-line-p)
+          (image-at-point-p)
+          (org-paste-plus--at-image-link-p))
+      (org-paste-plus--resize-attr sign))
+     (t (message "org-paste-plus: point is not on an image")))))
 
 ;;;###autoload
 (defun org-paste-plus-increase ()
