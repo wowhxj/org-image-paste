@@ -308,13 +308,24 @@ source path; otherwise it is read from the clipboard."
       (insert (format "[[file:%s][%s]]"
                       relative (file-name-nondirectory relative))))))
 
+(defun org-paste-plus--clipboard-image-p ()
+  "Return non-nil when the clipboard holds raw image data."
+  ;; ponytail: probes by writing clipboard image to a temp file, so the
+  ;; image branch runs the clipboard command twice; cheap enough to ignore.
+  (let ((tmp (make-temp-file "org-paste-plus" nil ".png")))
+    (unwind-protect
+        (progn
+          (shell-command (org-paste-plus--clipboard-command tmp))
+          (> (or (file-attribute-size (file-attributes tmp)) 0) 0))
+      (delete-file tmp))))
+
 ;;;###autoload
 (defun org-paste-plus-dwim ()
-  "Paste from the clipboard: a non-image file if present, otherwise an image.
-Probes the clipboard for a file reference first (the case when a file
-manager copied a file); an image file is treated as an image paste so
-the width prompt and `#+ATTR_*' block are produced.  Falls back to
-`org-paste-plus-from-clipboard' for raw image data."
+  "Paste from the clipboard, picking behaviour by content.
+An image file (copied in the file manager) or raw image data is pasted
+as an image, with the width prompt and `#+ATTR_*' block.  Any other
+file is inserted as a `file:' link.  Otherwise the clipboard text is
+yanked at point."
   (interactive)
   (let ((file (org-paste-plus--clipboard-file-path)))
     (cond
@@ -322,7 +333,9 @@ the width prompt and `#+ATTR_*' block are produced.  Falls back to
       (org-paste-plus-from-clipboard
        (read-number "Image width: " org-paste-plus-default-width) file))
      (file (org-paste-plus-file-from-clipboard file))
-     (t (call-interactively #'org-paste-plus-from-clipboard)))))
+     ((org-paste-plus--clipboard-image-p)
+      (call-interactively #'org-paste-plus-from-clipboard))
+     (t (yank)))))
 
 ;;;; Deletion
 
@@ -484,6 +497,7 @@ When on an ATTR/CAPTION line or inline image, updates the surrounding
 
 (defvar org-paste-plus-mode-map
   (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "s-v")   #'org-paste-plus-dwim)
     (define-key map (kbd "s-V")   #'org-paste-plus-dwim)
     (define-key map (kbd "C-c b") #'org-paste-plus-delete-link-and-file)
     (define-key map (kbd "C-+")   #'org-paste-plus-increase)
