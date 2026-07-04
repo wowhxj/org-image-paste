@@ -262,7 +262,7 @@ raw image data from the clipboard."
       (user-error "Could not paste an image from the clipboard"))
     (insert
      (format
-      (concat "\n#+DOWNLOADED: screenshot @ %s"
+      (concat "#+DOWNLOADED: screenshot @ %s"
               "\n#+CAPTION: "
               "\n#+ATTR_ORG: :width %d"
               "\n#+ATTR_LATEX: :width %s\\linewidth :float nil"
