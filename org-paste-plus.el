@@ -175,8 +175,12 @@ system file manager.  Returns nil when no such file is present."
   "Return the asset directory (relative path) for the current buffer."
   (unless buffer-file-name
     (user-error "Buffer is not visiting a file; save it first"))
-  (format org-paste-plus-folder-format
-          (file-name-base buffer-file-name)))
+  (let ((file buffer-file-name))
+    ;; org-crypt files are named `foo.org.gpg'; strip both extensions so
+    ;; the assets folder matches the unencrypted `foo.assets/' name.
+    (when (string-suffix-p ".gpg" file)
+      (setq file (file-name-sans-extension file)))
+    (format org-paste-plus-folder-format (file-name-base file))))
 
 (defun org-paste-plus--latex-width (width)
   "Compute the latex `\\linewidth' multiplier for an integer WIDTH."
