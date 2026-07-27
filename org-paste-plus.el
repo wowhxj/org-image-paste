@@ -19,12 +19,15 @@
 ;;
 ;; Pasting:
 ;;   `org-paste-plus-dwim' (bound to `s-V') probes the clipboard: when a
-;;   file manager has copied a file (e.g. a PDF) it copies that file into
-;;   a `<basename>.assets/' folder next to the Org file and inserts a
-;;   plain `file:' link; otherwise it grabs the clipboard image, writes a
-;;   timestamped PNG into the same folder, and inserts a `#+DOWNLOADED' /
-;;   `#+CAPTION' / `#+ATTR_ORG' / `#+ATTR_LATEX' / `#+ATTR_HTML' block
-;;   plus a `file:' link.
+;;   file manager has copied an image or video file, it copies that file
+;;   into a `<basename>.assets/' folder next to the Org file, prompts for
+;;   a width, and inserts a `#+CAPTION' / `#+ATTR_ORG' / `#+ATTR_LATEX' /
+;;   `#+ATTR_HTML' block plus a `file:' link (videos add `:loop' to the
+;;   ATTR_HTML line); any other file is copied in with a plain `file:'
+;;   link; otherwise it grabs the clipboard image, writes a timestamped
+;;   PNG into the same folder, and inserts a `#+DOWNLOADED' / `#+CAPTION'
+;;   / `#+ATTR_ORG' / `#+ATTR_LATEX' / `#+ATTR_HTML' block plus a `file:'
+;;   link.
 ;;
 ;;   The clipboard tools are selected automatically from `system-type':
 ;;     - macOS:      `pngpaste' / `osascript' (file URL)
@@ -102,6 +105,10 @@ The latex width is computed as PASTE-WIDTH / this value, capped at 1.0."
 (defcustom org-paste-plus-html-class "zoomImage"
   "CSS class added to the inserted `#+ATTR_HTML' block."
   :type 'string)
+
+(defcustom org-paste-plus-video-extensions '("mp4" "mov" "webm" "mkv" "avi" "m4v")
+  "File extensions (without the dot) treated as videos by `org-paste-plus-dwim'."
+  :type '(repeat string))
 
 (defcustom org-paste-plus-clipboard-command nil
   "Shell command template for reading a PNG from the clipboard.
@@ -192,6 +199,11 @@ system file manager.  Returns nil when no such file is present."
   (save-excursion
     (beginning-of-line)
     (looking-at-p "^[ \t]*#\\+\\(?:ATTR_[A-Z]+\\|CAPTION\\):")))
+
+(defun org-paste-plus--video-file-p (file)
+  "Non-nil if FILE's extension is in `org-paste-plus-video-extensions'."
+  (let ((ext (file-name-extension file)))
+    (and ext (member (downcase ext) org-paste-plus-video-extensions) t)))
 
 (defun org-paste-plus--at-image-link-p ()
   "Non-nil if point is on an Org link pointing to an image file.
@@ -314,6 +326,36 @@ source path; otherwise it is read from the clipboard."
       (insert (format "[[file:%s][%s]]"
                       relative (file-name-nondirectory relative))))))
 
+;;;###autoload
+(defun org-paste-plus-video-from-clipboard (width &optional src)
+  "Copy a video from the clipboard into the buffer's asset folder.
+
+Like `org-paste-plus-file-from-clipboard' but also inserts a
+`#+CAPTION' / `#+ATTR_ORG' / `#+ATTR_LATEX' / `#+ATTR_HTML' block (the
+latter with `:loop') so the pasted video is sized the same way pasted
+images are.  WIDTH is the integer pixel width used for the ATTR_ORG /
+ATTR_HTML lines.  SRC, when given, is the source path; otherwise it is
+read from the clipboard."
+  (interactive
+   (list (read-number "Video width: " org-paste-plus-default-width)))
+  (let ((src (or src (org-paste-plus--clipboard-file-path))))
+    (unless src
+      (user-error "No file found on the clipboard"))
+    (let* ((folder (org-paste-plus--asset-dir))
+           (relative (org-paste-plus--unique-dest
+                      folder (file-name-nondirectory src))))
+      (unless (file-exists-p folder)
+        (make-directory folder t))
+      (copy-file src relative)
+      (insert
+       (format
+        (concat "#+CAPTION: "
+                "\n#+ATTR_ORG: :width %d"
+                "\n#+ATTR_HTML: :width %d :loop"
+                "\n#+ATTR_LATEX: :width %s\\linewidth :float nil"
+                "\n[[file:%s]]\n")
+        width width (org-paste-plus--latex-width width) relative)))))
+
 (defun org-paste-plus--clipboard-image-p ()
   "Return non-nil when the clipboard holds raw image data."
   ;; ponytail: probes by writing clipboard image to a temp file, so the
@@ -334,15 +376,19 @@ source path; otherwise it is read from the clipboard."
 (defun org-paste-plus-dwim ()
   "Paste from the clipboard, picking behaviour by content.
 An image file (copied in the file manager) or raw image data is pasted
-as an image, with the width prompt and `#+ATTR_*' block.  Any other
-file is inserted as a `file:' link.  Otherwise the clipboard text is
-yanked at point."
+as an image, with the width prompt and `#+ATTR_*' block.  A video file
+is pasted the same way, via `org-paste-plus-video-from-clipboard'.
+Any other file is inserted as a `file:' link.  Otherwise the clipboard
+text is yanked at point."
   (interactive)
   (let ((file (org-paste-plus--clipboard-file-path)))
     (cond
      ((and file (string-match-p (image-file-name-regexp) file))
       (org-paste-plus-from-clipboard
        (read-number "Image width: " org-paste-plus-default-width) file))
+     ((and file (org-paste-plus--video-file-p file))
+      (org-paste-plus-video-from-clipboard
+       (read-number "Video width: " org-paste-plus-default-width) file))
      (file (org-paste-plus-file-from-clipboard file))
      ((org-paste-plus--clipboard-image-p)
       (call-interactively #'org-paste-plus-from-clipboard))
