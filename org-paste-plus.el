@@ -32,6 +32,7 @@
 ;;   The clipboard tools are selected automatically from `system-type':
 ;;     - macOS:      `pngpaste' / `osascript' (file URL)
 ;;     - GNU/Linux:  `xclip' (image/png or text/uri-list)
+;;     - WSL:        `powershell.exe' (Windows clipboard; `wslpath' for files)
 ;;     - Windows:    PowerShell (Get-Clipboard Image or FileDropList)
 ;;   Override with `org-paste-plus-clipboard-command' or
 ;;   `org-paste-plus-clipboard-file-command' if needed.
@@ -129,6 +130,37 @@ chosen based on `system-type'."
 
 ;;;; Internal helpers
 
+(defun org-paste-plus--wsl-p ()
+  "Return non-nil when Emacs is running inside WSL."
+  (and (eq system-type 'gnu/linux)
+       (or (getenv "WSL_INTEROP")
+           (getenv "WSL_DISTRO_NAME")
+           (and (file-readable-p "/proc/version")
+                (with-temp-buffer
+                  (insert-file-contents-literally "/proc/version")
+                  (let ((case-fold-search t))
+                    (re-search-forward "\\b\\(?:microsoft\\|wsl\\)" nil t)))))))
+
+(defun org-paste-plus--wsl-powershell-command (script)
+  "Return a shell command that runs PowerShell SCRIPT from WSL.
+The whole script is quoted for the POSIX shell so PowerShell variables
+such as `$img' are not expanded by `/bin/sh' first."
+  (format "powershell.exe -Sta -NoProfile -Command %s"
+          (shell-quote-argument script)))
+
+(defun org-paste-plus--wsl-path (path)
+  "Convert a Windows PATH emitted by PowerShell to a WSL path."
+  (if (and (org-paste-plus--wsl-p)
+           (executable-find "wslpath")
+           (or (string-match-p "\\`[[:alpha:]]:" path)
+               (string-match-p "\\\\" path)))
+      (let ((converted
+             (string-trim
+              (shell-command-to-string
+               (format "wslpath -u %s" (shell-quote-argument path))))))
+        (if (string-empty-p converted) path converted))
+    path))
+
 (defun org-paste-plus--clipboard-command (file)
   "Return the shell command to write clipboard PNG into FILE."
   (let ((quoted (shell-quote-argument file)))
@@ -137,6 +169,17 @@ chosen based on `system-type'."
       (format org-paste-plus-clipboard-command quoted))
      ((eq system-type 'darwin)
       (format "pngpaste %s" quoted))
+     ((org-paste-plus--wsl-p)
+      ;; GDI+ cannot save directly to a `\\wsl.localhost' UNC path.
+      ;; Save in Windows' TEMP first, then copy the file from WSL.
+      (let ((destination (shell-quote-argument
+                          (expand-file-name file)))
+            (script
+             "$img = Get-Clipboard -Format Image -ErrorAction SilentlyContinue; if (-not $img) { exit 1 }; $tmp = Join-Path $env:TEMP (\"org-paste-plus-\" + [guid]::NewGuid().ToString() + \".png\"); try { $img.Save($tmp, [System.Drawing.Imaging.ImageFormat]::Png); [Console]::Write($tmp) } catch { if (Test-Path $tmp) { Remove-Item -Force $tmp }; exit 1 }"))
+        (format
+         "win_tmp=$(%s 2>/dev/null | tr -d '\\r' | tail -n 1); test -n \"$win_tmp\"; wsl_tmp=$(wslpath -u \"$win_tmp\"); test -s \"$wsl_tmp\"; cp \"$wsl_tmp\" %s; rm -f \"$wsl_tmp\""
+         (org-paste-plus--wsl-powershell-command script)
+         destination)))
      ((eq system-type 'gnu/linux)
       (format "xclip -selection clipboard -t image/png -o > %s" quoted))
      ((memq system-type '(windows-nt cygwin ms-dos))
@@ -154,6 +197,9 @@ chosen based on `system-type'."
    (org-paste-plus-clipboard-file-command)
    ((eq system-type 'darwin)
     "osascript -e 'POSIX path of (the clipboard as «class furl»)' 2>/dev/null")
+   ((org-paste-plus--wsl-p)
+    (org-paste-plus--wsl-powershell-command
+     "$f = Get-Clipboard -Format FileDropList -ErrorAction SilentlyContinue; if ($f) { $f[0].FullName }"))
    ((eq system-type 'gnu/linux)
     "xclip -selection clipboard -t text/uri-list -o 2>/dev/null")
    ((memq system-type '(windows-nt cygwin ms-dos))
@@ -172,6 +218,8 @@ system file manager.  Returns nil when no such file is present."
         (when (and path (string-prefix-p "file://" path))
           (setq path (url-unhex-string
                       (substring path (length "file://")))))
+        (when path
+          (setq path (org-paste-plus--wsl-path path)))
         (when (and path
                    (not (string-empty-p path))
                    (file-exists-p path)

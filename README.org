@@ -12,8 +12,9 @@
     =#+DOWNLOADED= / =#+CAPTION= / =#+ATTR_ORG= / =#+ATTR_LATEX= / =#+ATTR_HTML=
     以及 =file:= 链接。
 - 跨平台剪贴板支持：
-  - 图片：macOS（=pngpaste=）、Linux（=xclip=）、Windows（PowerShell）。
-  - 文件：macOS（=osascript=）、Linux（=xclip text/uri-list=）、Windows（=FileDropList=）。
+  - 图片：macOS（=pngpaste=）、Linux（=xclip=）、WSL（=powershell.exe= 读取 Windows 剪贴板）、Windows（PowerShell）。
+  - 文件：macOS（=osascript=）、Linux（=xclip text/uri-list=）、WSL（=powershell.exe= + =wslpath=）、Windows（=FileDropList=）。
+  - WSL 下会自动使用 Windows 剪贴板，不要求安装 =xclip=。
 - 在 =#+ATTR_*= 行上按 ~+~ / ~-~ 增减所有 =:width N= 值，并刷新当前 subtree 内联图片。
 - 在内联图片上按 ~+~ / ~-~ 直接调用 =image-increase-size= / =image-decrease-size=。
 - 既不在属性行也不在图片上时，按键退化为字符自插入；~C-+~ / ~C--~ 退化为
@@ -27,6 +28,7 @@
 | macOS   | =pngpaste=            | =osascript=（自带） | =brew install pngpaste=    |
 | Linux   | =xclip=               | =xclip=           | =apt install xclip= 等价命令 |
 | Windows | PowerShell（自带）    | PowerShell（自带） | -                          |
+| WSL     | =powershell.exe=（Windows 剪贴板） | =powershell.exe= + =wslpath= | WSL 自带              |
 
 也可以通过 =org-paste-plus-clipboard-command= / =org-paste-plus-clipboard-file-command=
 自行覆盖命令。
